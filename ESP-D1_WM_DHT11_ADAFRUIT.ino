@@ -21,32 +21,36 @@ char auth[] = "Ul_9V-w_d2I31lwh826Rmes2zDaqRy5n";
 #define OLED_RESET -1   //   QT-PY / XIAO
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-unsigned long currentMillis, readMillis = 0;
+unsigned long currentMillis, readMillis = 0, intervaloDHT = 10000;
 #define DHTPIN 2          // Define o pino digital que o DHT11 está conectado (D4)
 #define DHTTYPE DHT11     // DHT 11
 DHT dht(DHTPIN, DHTTYPE); //Inicializando o objeto dht do tipo DHT passando como parâmetro o pino (DHTPIN) e o tipo do sensor (DHTTYPE)
 
-
-
+int umidade = 0; float temp = 0;
 
 void setup() {
   Serial.begin(115200);
-
-  Serial.println("Setup ...");
 
   delay(250); // wait for the OLED to power up
   display.begin(i2c_Address, true); // Address 0x3C default
   display.cp437(true); // Use correct CP437 character codes
   display.clearDisplay();
+  
+  Serial.println("Setup ...");
+  display.setTextSize(2);
+  display.setTextColor(SH110X_WHITE);
+  display.setCursor(18,0);
+  display.println("Setup ...");
+  display.display();
 
   WiFiManager wm;
-
+  // Define um tempo limite para tentar conexão como AP
   wm.setConfigPortalTimeout(60);
-  bool res;
-  res = wm.autoConnect("ESP_D1","Bruno156"); // password protected ap
+  //autoConnect retorna false se falhar
+  bool res = wm.autoConnect("ESP_D1","Bruno156"); // Cria AP caso não encontre rede WiFi
 
   if(!res) {
-      Serial.println("Failed to connect");
+      Serial.println("WiFi não conectado - Modo Offline");
       display.clearDisplay();
       display.drawBitmap(2, 0, wifi_off, 16, 16, 1);
       display.setTextSize(2);
@@ -54,7 +58,6 @@ void setup() {
       display.println("ESP_D1");
       display.println(WiFi.softAPIP());
       display.display();
-      ESP.restart();
   } 
   else {
       //if you get here you have connected to the WiFi    
@@ -62,33 +65,31 @@ void setup() {
       display.clearDisplay();
       display.drawBitmap(2, 0, wifi_on, 16, 16, 1);
       display.setTextSize(2);
-      display.setCursor(20,17);
-      display.println("CONECTADO!");
       display.display();
   }
-  Blynk.config(auth);
+
+  Blynk.config(auth); //Configura o Token do do dispositivo no Blynk
+  if(Blynk.connect(5000)){
+    Blynk.syncVirtual(V5);
+    mostraTempoAtualizacao();
+  }
   dht.begin(); //Inicializa o sensor
-
-  display.setTextSize(2);
-  display.setTextColor(SH110X_WHITE);
-  display.setCursor(20,17);
-  display.println("Setup ...");
-  display.display();
-
 }
 
 void loop() {
-  if (millis() - readMillis >= 2000) {
+  if (millis() - readMillis >= intervaloDHT){
     sendSensorDHT();
     verifyConnectionBlynkSV();
-    Blynk.run();
+    mostraTempoAtualizacao();
   }
+  Blynk.run();
+
   
 }
 
 void sendSensorDHT(){
-  int umidade = dht.readHumidity(); //Realiza a leitura da umidadedade e armazena na variável umidade
-  float temp = dht.readTemperature(); //Realiza a leitura da temperatura e armazena na variável temp
+  umidade = dht.readHumidity(); //Realiza a leitura da umidadedade e armazena na variável umidade
+  temp = dht.readTemperature(); //Realiza a leitura da temperatura e armazena na variável temp
 
   if (isnan(umidade) || isnan(temp)) { //Verifica se houve falha na leitura do sensor
     Serial.println("Falha na leitura do sensor DHT!");
@@ -113,12 +114,14 @@ void sendSensorDHT(){
     display.display();
   }
   readMillis = millis();
-  //WiFi.status();
-  //wm.report
 }
 
 void verifyConnectionBlynkSV(){
-  if(Blynk.connected()){
+  if (WiFi.status() != WL_CONNECTED){
+    Serial.println("Conectado ao servidor Blynk!");
+    display.drawBitmap(2, 0, wifi_off, 16, 16, 1);
+    display.display();
+  }else if (Blynk.connected()){
     Serial.println("Conectado ao servidor Blynk!");
     display.drawBitmap(2, 0, wifi_on, 16, 16, 1);
     display.display();
@@ -127,4 +130,18 @@ void verifyConnectionBlynkSV(){
     display.drawBitmap(2, 0, internet_off, 16, 16, 1);
     display.display();
   }
+}
+
+BLYNK_WRITE(V5){
+  int tempoSegundos = param.asInt(); //lê o valor do servidor
+  if (tempoSegundos >= 1 && tempoSegundos <=60){
+    intervaloDHT = tempoSegundos*1000;
+  }
+}
+
+void mostraTempoAtualizacao(){
+  display.setTextSize(1);
+  display.setCursor(100,0);
+  display.print(String(intervaloDHT/1000)+"s");
+  display.display();
 }
