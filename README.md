@@ -9,5 +9,5 @@
   </ul>
   
 
-<p>Comunicação com Blynk.
-Funcionamento com display OLED com comunicação i2c.</p>
+<p>Comunicação com Blynk.</p>
+<p>Funcionamento com display OLED com comunicação i2c.</p>
